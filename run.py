@@ -28,6 +28,27 @@ def metrics(y_true, y_pred):
     }
 
 
+def evaluate_quantum_layout(X_train_q, X_test_q, y_train, y_test, entangler: str = "cnot"):
+    dev = qml.device("default.qubit", wires=4)
+
+    @qml.qnode(dev)
+    def quantum_circuit(features):
+        for i in range(4):
+            qml.RY(np.pi * features[i], wires=i)
+        for i in range(3):
+            if entangler == "cz":
+                qml.CZ(wires=[i, i + 1])
+            else:
+                qml.CNOT(wires=[i, i + 1])
+        return [qml.expval(qml.PauliZ(i)) for i in range(4)]
+
+    Z_train = np.array([quantum_circuit(row) for row in X_train_q])
+    Z_test = np.array([quantum_circuit(row) for row in X_test_q])
+
+    quantum_model = Ridge(alpha=0.5).fit(Z_train, y_train)
+    return metrics(y_test, quantum_model.predict(Z_test))
+
+
 def run_experiment():
     X, y = make_data()
     X_train, X_test, y_train, y_test = train_test_split(
@@ -46,36 +67,24 @@ def run_experiment():
     rf_model = RandomForestRegressor(n_estimators=100, random_state=42).fit(X_train_s, y_train)
     rf_m = metrics(y_test, rf_model.predict(X_test_s))
 
-    # 3. Quantum circuit feature model + Ridge
+    # 3. Quantum circuit feature models + Ridge
     q_scaler = MinMaxScaler()
     X_train_q = q_scaler.fit_transform(X_train)
     X_test_q = q_scaler.transform(X_test)
 
-    dev = qml.device("default.qubit", wires=4)
-
-    @qml.qnode(dev)
-    def quantum_circuit(features):
-        for i in range(4):
-            qml.RY(np.pi * features[i], wires=i)
-        for i in range(3):
-            qml.CNOT(wires=[i, i + 1])
-        return [qml.expval(qml.PauliZ(i)) for i in range(4)]
-
-    Z_train = np.array([quantum_circuit(row) for row in X_train_q])
-    Z_test = np.array([quantum_circuit(row) for row in X_test_q])
-
-    quantum_model = Ridge(alpha=0.5).fit(Z_train, y_train)
-    q_m = metrics(y_test, quantum_model.predict(Z_test))
+    q_cnot_m = evaluate_quantum_layout(X_train_q, X_test_q, y_train, y_test, entangler="cnot")
+    q_cz_m = evaluate_quantum_layout(X_train_q, X_test_q, y_train, y_test, entangler="cz")
 
     summary = {
         "ridge": ridge_m,
         "random_forest": rf_m,
-        "quantum_ridge": q_m,
+        "quantum_ridge_cnot": q_cnot_m,
+        "quantum_ridge_cz": q_cz_m,
     }
     Path("results.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     for name, m in summary.items():
-        print(f"{name:15s} -> RMSE: {m['rmse']} | R2: {m['r2']}")
+        print(f"{name:20s} -> RMSE: {m['rmse']} | R2: {m['r2']}")
 
 
 if __name__ == "__main__":

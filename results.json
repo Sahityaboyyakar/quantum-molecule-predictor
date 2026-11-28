@@ -7,8 +7,12 @@
     "rmse": 0.3868,
     "r2": 0.905
   },
-  "quantum_ridge": {
+  "quantum_ridge_cnot": {
     "rmse": 0.8147,
     "r2": 0.5786
+  },
+  "quantum_ridge_cz": {
+    "rmse": 0.8325,
+    "r2": 0.5601
   }
 }
